@@ -63,11 +63,9 @@ type Action
   | ModifySelected Item.Action
   | ModifyForm ReminderForm.Action
   | InsertReminder Reminder.Model
-<<<<<<< HEAD
   | HideDone
-=======
->>>>>>> 480e67da25f1897f6e1ba09c914b1c293e29ea07
 
+  
 update action model =
   case Debug.watch "action" action of
     Next ->
