@@ -63,6 +63,7 @@ type Action
   | ModifySelected Item.Action
   | ModifyForm ReminderForm.Action
   | InsertReminder Reminder.Model
+  | HideDone
 
 update action model =
   case Debug.watch "action" action of
