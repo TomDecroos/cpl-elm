@@ -1,48 +1,62 @@
 module Hotkeys where
 
 import Signal
+import ItemManager
 import ItemFeed
-import ItemFeedSortFunction
+import ItemSort
 import Item
 import EmailViewer
 import Toggler
 import Keyboard
 import Char
-import Debug
+import ReminderForm
 
-
+type alias Action = Maybe ItemManager.Action
 -- HOTKEYS SIGNAL
-hotkeys: Signal (Maybe Action)
+hotkeys: Signal Action
 hotkeys
-  = [ hotkey 'J' next
-    , hotkey 'K' previous
-    , hotkey 'O' (modifyselected (content (shorten toggle)))
-    , hotkey 'P' (modifyselected (pin toggle))
-    , hotkey 'X' (modifyselected (done toggle))
-    , holdkey 'S' (setsortfunction olditemsontop) (setsortfunction basicsort)
+  = [ hotkey 'J'
+        <| modifyfeed selectnext
+    , hotkey 'K'
+        <| modifyfeed selectprevious
+    , hotkey 'O'
+        <| modifyfeed <| modifyselected <| content <| shorten toggle
+    , hotkey 'P'
+        <| modifyfeed <| modifyselected <| pin toggle
+    , hotkey 'X'
+        <| modifyfeed <| modifyselected <| done toggle
+    , holdkey 'S'
+        (modifyfeed <| modifysort olditemsontop)
+        (modifyfeed <| modifysort basic)
+    , hotkey 'T'
+        <| modifyfeed <| hidedone toggle
+    , hotkey 'H'
+        <| modifyform <| hide toggle
     ]
     |> Signal.mergeMany
 
 comboKey : Signal Bool
 comboKey = Keyboard.alt
 
-
-type alias Action = ItemFeed.Action
 -- ACTION KEYWORDS
+modifyfeed = ItemManager.ModifyFeed
 modifyselected = ItemFeed.ModifySelected
-next = ItemFeed.Next
-previous = ItemFeed.Previous
-setsortfunction = ItemFeed.SetSortFunction
-olditemsontop = ItemFeedSortFunction.oldItemsOnTop
-basicsort = ItemFeedSortFunction.basicSort
+selectnext = ItemFeed.SelectNext
+selectprevious = ItemFeed.SelectPrevious
+hidedone = ItemFeed.HideDone
+modifysort = ItemFeed.ModifySort
+olditemsontop = ItemSort.oldItemsOnTop
+basic = ItemSort.basic
 pin = Item.Pin
 done = Item.Done
 content = Item.Content
 shorten = EmailViewer.Shorten
 toggle = Toggler.Toggle
+modifyform = ItemManager.ModifyForm
+hide = ReminderForm.Hide
 
 -- IMPLEMENTATION
-hotkey: Char -> Action -> Signal (Maybe Action)
+hotkey: Char -> ItemManager.Action -> Signal Action
 hotkey key action =
   let signal = Signal.map2 (&&) comboKey (isDown key)
       convert bool =

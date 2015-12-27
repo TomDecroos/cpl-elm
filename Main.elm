@@ -3,10 +3,13 @@ module Main where
 import Html exposing ( Html )
 import Signal
 import Static
-import ItemFeed
+--import ItemFeed as Root
 import Debug
-import Hotkeys exposing (hotkeys)
-
+import Hotkeys
+import ItemManager
+import ItemFeed
+import Html exposing (div,node)
+import Html.Attributes as A
 
 -- Name: Tom Decroos
 -- Student ID: r0297757
@@ -65,21 +68,45 @@ import Hotkeys exposing (hotkeys)
 
 -- Start of program
 
-main : Signal Html.Html
-main = Signal.map (ItemFeed.view address) state
+main = Signal.map (view mailbox.address) state
 
-model = ItemFeed.init Static.emails Static.reminders
+state = Signal.foldp update init actions
 
-actions = Signal.mailbox Nothing
 
-address = Signal.forwardTo actions.address Just
+init =
+  let insertEmail =
+        update << Just << ItemManager.ModifyFeed << ItemFeed.InsertEmail
+      insertReminder =
+        update << Just << ItemManager.ModifyFeed << ItemFeed.InsertReminder
+  in
+    ItemManager.init
+      |> flip (List.foldl insertEmail) Static.emails
+      |> flip (List.foldl insertReminder) Static.reminders
+
+
+actions = Signal.merge Hotkeys.hotkeys mailbox.signal
+
+
+mailbox = Signal.mailbox Nothing
+
 
 update maybeAction model =
   case maybeAction of
     Just action ->
-      ItemFeed.update action model
+      ItemManager.update action model
 
     Nothing ->
       model
 
-state = Signal.foldp update model <| Signal.merge hotkeys actions.signal
+
+view address model =
+  div []
+      [ stylesheet "style.css"
+      , ItemManager.view (Signal.forwardTo address Just) model]
+
+stylesheet : String -> Html
+stylesheet href =
+  node "link"
+    [ A.rel "stylesheet"
+    , A.href href
+    ] []

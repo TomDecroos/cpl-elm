@@ -1,7 +1,7 @@
 module Email where
 
 import Html exposing (Html,div,text,br,span)
-import Html.Attributes exposing (style)
+import Html.Attributes exposing (class)
 -- MODEL
 type alias Model =
   { from: String
@@ -27,8 +27,6 @@ view model =
 prettyField : (String,String) -> Html
 prettyField (name,value) =
   span []
-    [ span [style bold] [text <| name ++ " : "]
+    [ span [class "bold"] [text <| name ++ " : "]
     , text value
     ]
-
-bold = [("font-weight","bold")]
