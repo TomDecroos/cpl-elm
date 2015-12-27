@@ -1,7 +1,7 @@
 module Reminder where
 
 import Html exposing (Html,div,span,text,br)
-import Html.Attributes exposing (style)
+import Html.Attributes exposing (style,class)
 
 -- MODEL
 type alias Model =
@@ -21,8 +21,6 @@ view model =
 prettyField : (String,String) -> Html
 prettyField (name,value) =
   span []
-    [ span [style bold] [text <| name ++ " : "]
+    [ span [class "bold"] [text <| name ++ " : "]
     , text value
     ]
-
-bold = [("font-weight","bold")]

@@ -2,7 +2,7 @@ module ItemFeed where
 
 import Html exposing (Html,div,text,br,button,ul,li,span,h1)
 import Html.Events exposing (onClick)
-import Html.Attributes exposing (style)
+import Html.Attributes exposing (style,class)
 import EmailViewer
 import Email
 import Reminder
@@ -11,176 +11,175 @@ import Item
 import Toggler
 import Debug
 import String
-import ItemFeedSortFunction
+import ItemSort
 
 
 -- MODEL
 type alias Model =
-  { items : List (ID, Item.Model)
-  , nextID : ID
-  , sortfunction : ItemFeedSortFunction.Model
-  , selectedID : ID
-  , reminderForm : ReminderForm.Model
+  { items : List Item.Model
+  , nextID : Item.ID
+  , sort : ItemSort.Model
+  , hideDone : Bool
   }
 
-type alias ID = Int
--- type alias SortFunction = List (ID,Item.Model) -> List (ID,Item.Model)
-
-init : List Email.Model -> List Reminder.Model -> Model
-init emails reminders =
+init : Model
+init =
   { items = []
   , nextID = 0
-  , sortfunction = ItemFeedSortFunction.basicSort
-  , selectedID = 0
-  , reminderForm = ReminderForm.init
+  , sort = ItemSort.basic
+  , hideDone = False
   }
-  |> flip (List.foldl insertEmail)  emails
-  |> flip (List.foldl insertReminder) reminders
 
-
-insertEmail : Email.Model -> Model -> Model
-insertEmail email model =
-  insertItem Item.initEmail email model
-
-insertReminder : Reminder.Model -> Model -> Model
-insertReminder reminder model =
-  insertItem Item.initReminder reminder model
-
-insertItem : (a -> Item.Model) -> a -> Model -> Model
-insertItem itemInit item model =
-  { model
-  | items <- ( model.nextID, itemInit item ) :: model.items
-  , nextID <- model.nextID + 1
+type alias SubList =
+  { title : String
+  , items : List Item.Model
   }
+
+
+sublists : Model -> List SubList
+sublists model =
+  let (done,todo) = List.partition .done model.items
+  in
+    [ ( True
+      , { title = "TODO"
+        , items = model.sort todo })
+    , ( not model.hideDone
+      , { title = "DONE"
+        , items = model.sort done })
+    ]
+    |> List.filter fst
+    |> List.map snd
+
+visibleItems : Model -> List Item.Model
+visibleItems = List.concat << List.map .items << sublists
 
 -- UPDATE
 
 type Action
-  = Next
-  | Previous
-  | SetSortFunction ItemFeedSortFunction.Model
-  | Modify ID Item.Action
+  = Select Item.ID
+  | SelectWithOffset Int
+  | SelectNext
+  | SelectPrevious
+  | SelectRefresh
+  | ModifySort ItemSort.Model
+  | ModifyItem Item.ID Item.Action
   | ModifySelected Item.Action
-  | ModifyForm ReminderForm.Action
   | InsertReminder Reminder.Model
-  | HideDone
+  | InsertEmail Email.Model
+  | InsertItem (Item.ID -> Item.Model)
+  | HideDone Toggler.Action
 
-  
 update action model =
   case Debug.watch "action" action of
-    Next ->
-      getNewSelectedID model 1
-
-    Previous ->
-      getNewSelectedID model (-1)
-
-    SetSortFunction sortfunction ->
-      {model | sortfunction <- sortfunction}
-
-    Modify id itemAction ->
+    Select id ->
       let
-        updateItem (itemID, itemModel) =
-          if itemID == id then
-            (itemID, Item.update itemAction itemModel)
+        updateItem item =
+          if item.id == id then
+            Item.update Item.Select item
           else
-            (itemID, itemModel)
+            Item.update Item.Unselect item
       in
-        { model
-        | items <- List.map updateItem model.items
-        , selectedID <- id }
+        { model | items <- List.map updateItem model.items }
+
+    SelectWithOffset offset ->
+        let
+          items = visibleItems model
+          n = List.length items
+          indexedItems = List.map2 (,) [0..n-1] items
+          selectedIndex = indexedItems
+            |> List.filter (.selected << snd)
+            |> List.map fst
+            |> List.head
+          newID =
+            case selectedIndex of
+              Just index ->
+                indexedItems
+                  |> List.filter (\x -> (index + offset) % n == fst x)
+                  |> List.head
+                  |> Maybe.map (.id << snd)
+                  |> Maybe.withDefault -1
+              Nothing ->
+                items
+                  |> List.head
+                  |> Maybe.map .id
+                  |> Maybe.withDefault -1
+        in
+          update (Select newID) model
+
+    SelectNext ->
+      update (SelectWithOffset 1) model
+
+    SelectPrevious ->
+      update (SelectWithOffset -1) model
+
+    SelectRefresh ->
+      update (SelectWithOffset 0) model
+
+    ModifySort sort ->
+      {model | sort <- sort}
+
+    ModifyItem id itemAction ->
+      let
+        updateItem item =
+          if item.id == id then
+            Item.update itemAction item
+          else
+            item
+      in
+        { model | items <- List.map updateItem model.items }
+        |> update (Select id)
 
     ModifySelected itemAction ->
-        update (Modify model.selectedID itemAction) model
-        {--}
-    ModifyForm formAction ->
-      {model | reminderForm <- ReminderForm.update formAction model.reminderForm}
+      let
+        updateItem item =
+          if item.selected then
+            Item.update itemAction item
+          else
+            item
+      in
+        { model | items <- List.map updateItem model.items }
 
     InsertReminder reminder ->
-      model
-        |> insertReminder reminder
-        |> update (ModifyForm ReminderForm.Clear)
+      update (InsertItem (Item.initReminder reminder)) model
 
+    InsertEmail email ->
+      let item = Item.init (Item.Email (EmailViewer.init email))
+      in update (InsertItem item) model
 
-getNewSelectedID model offset =
-  let
-    xs = List.map fst <| model.sortfunction model.items
-    n = List.length xs
-    ixs = List.map2 (,) [0..n-1] xs
-    index = ixs
-        |> List.filter (\x -> model.selectedID == snd x)
-        |> List.head
-        |> Maybe.withDefault (0,0)
-        |> fst
-    newSelectedID = ixs
-        |> List.filter (\x -> (index + offset) % n == fst x)
-        |> List.head
-        |> Maybe.withDefault (0,0)
-        |> snd
-  in
-    {model | selectedID <- newSelectedID}
+    InsertItem item ->
+      { model
+      | items <- (item model.nextID ) :: model.items
+      , nextID <- model.nextID + 1
+      }
+        |> update (Select model.nextID)
 
+    HideDone toggleAction ->
+      {model | hideDone <- Toggler.update toggleAction model.hideDone}
+      |> update SelectRefresh
 
 -- VIEW
 view : Signal.Address Action -> Model -> Html
 view address model =
   div
-      [style [ ("width","700px")
-             , ("margin-left","auto")
-             , ("margin-right","auto")
-             ]
+      [class "item-feed"]
+      (List.map (viewSubList address) (sublists model))
+
+
+viewSubList address sublist =
+  if List.isEmpty sublist.items then
+    text ""
+  else
+    div
+      []
+      [ span [class "title" ] [text sublist.title]
+      , ul
+          [class "item-list" ]
+          ( sublist.items
+            |> List.map (viewItem address)
+            |> List.map (\x ->li [] [x])
+          )
       ]
-      [ h1 [style [("text-align","center")] ] [text "ADD REMINDER"]
-      , viewReminderForm address model.reminderForm
-      , h1 [style [("text-align","center")] ] [text "TODO"]
-      , viewDone False address model
-      , h1 [style [("text-align","center")] ] [text "DONE"]
-      , viewDone True address model
-      ]
 
-viewDone : Bool -> Signal.Address Action -> Model -> Html
-viewDone done address model =
-      ul
-        [ style [ ("list-style-type", "none")
-                ]
-        ]
-        ( model.items
-        |> List.filter (\(id,model) -> model.done == done)
-        |> model.sortfunction
-        |> List.map (viewItem model.selectedID address)
-        |> List.map (\x ->li [] [x])
-        )
-
-viewItem : ID -> Signal.Address Action -> (ID, Item.Model) -> Html
-viewItem selectedID address (id,model) =
-  div
-    [style [ ("padding-top","20px")
-           , ("padding-bottom","20px") ]]
-    [ let
-        htmlItem = Item.view (Signal.forwardTo address (Modify id)) model
-      in
-        if id == selectedID then
-          selected htmlItem
-        else
-          htmlItem
-    ]
-
-selected : Html -> Html
-selected item =
-  div
-    [style [ ("border-style","none none none groove")
-           , ("border-color","lightblue")
-           , ("border-width","5px")
-           , ("padding-left","5px")
-           ]
-    ]
-    [item]
-{--}
-viewReminderForm : Signal.Address Action -> ReminderForm.Model -> Html
-viewReminderForm address reminderForm =
-  let context = ReminderForm.Context
-          (Signal.forwardTo address InsertReminder)
-          (Signal.forwardTo address ModifyForm)
-  in
-    [ReminderForm.view context reminderForm]
-    |> div [style [("padding-left","50px")] ]
---}
+viewItem : Signal.Address Action -> Item.Model -> Html
+viewItem address model =
+  Item.view (Signal.forwardTo address (ModifyItem model.id)) model

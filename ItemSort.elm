@@ -1,23 +1,17 @@
-module ItemFeedSortFunction where
+module ItemSort where
 
 import Item
 import List
 import String
 
 -- MODEL
-type alias Model = List (ID,Item.Model) -> List (ID, Item.Model)
-type alias ID = Int
+type alias Model = List Item.Model -> List Item.Model
 
-basicSort : Model
-basicSort = sortByWith snd basicCompare
+basic : Model
+basic = List.sortWith basicCompare
 
 oldItemsOnTop : Model
-oldItemsOnTop = sortByWith snd oldCompare
-
-
--- combining List.sortWith and List.sorthBy
-sortByWith : (a -> b) -> (b -> b -> Order) -> List a -> List a
-sortByWith f compare' = List.sortWith (\a b -> compare' (f a) (f b))
+oldItemsOnTop = List.sortWith oldCompare
 
 
 -- Helper Methods
@@ -46,23 +40,12 @@ dateCompare a b =
 
 basicCompare : Item.Model -> Item.Model -> Order
 basicCompare a b =
-  case flip booleanCompare a.done b.done of
+  case flip booleanCompare a.pinned b.pinned of
     EQ ->
-      case flip booleanCompare a.pinned b.pinned of
-        EQ ->
-          dateCompare a b
-
-        order ->
-          order
+      dateCompare a b
 
     order ->
       order
 
 oldCompare : Item.Model -> Item.Model -> Order
-oldCompare a b =
-  case flip booleanCompare a.done b.done of
-    EQ ->
-      flip dateCompare a b
-
-    order ->
-      order
+oldCompare a b = flip dateCompare a b
